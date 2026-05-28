@@ -8,9 +8,8 @@
 import os
 from datetime import datetime
 import gspread
-from google.oauth2 import service_account
+from credentials_helper import get_credentials
 
-CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
 SPREADSHEET_ID = os.getenv("GOOGLE_SPREADSHEET_ID")
 SHEET_NAME = "Khách hàng"
 
@@ -19,11 +18,30 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# Cột trong spreadsheet
+# Cột trong spreadsheet (13 cột)
 HEADERS = [
-    "STT", "Tên KH / Công ty", "Người liên hệ", "SĐT",
-    "Email", "Nhu cầu", "Trạng thái", "Ghi chú", "Ngày thêm", "Cập nhật lần cuối"
+    "STT",                  # A
+    "Tên KH / Công ty",     # B
+    "Người liên hệ",        # C
+    "SĐT",                  # D
+    "Email",                # E
+    "Nhu cầu",              # F
+    "Tiềm năng (NAV)",      # G
+    "Nguồn KH",             # H
+    "Trạng thái",           # I
+    "Ngày hẹn tiếp theo",   # J
+    "Ghi chú",              # K
+    "Ngày thêm",            # L
+    "Cập nhật lần cuối",    # M
 ]
+
+# Vị trí cột (1-indexed)
+COL = {
+    "stt": 1, "name": 2, "contact": 3, "phone": 4,
+    "email": 5, "need": 6, "nav": 7, "source": 8,
+    "status": 9, "next_meeting": 10, "note": 11,
+    "created": 12, "updated": 13,
+}
 
 STATUS_LIST = ["Mới", "Đang tư vấn", "Đã chốt", "Không tiềm năng"]
 STATUS_EMOJI = {
@@ -33,13 +51,16 @@ STATUS_EMOJI = {
     "Không tiềm năng": "❌",
 }
 
+NAV_LIST = ["Cao", "Trung bình", "Thấp"]
+NAV_EMOJI = {"Cao": "🔥", "Trung bình": "⚡", "Thấp": "🌱"}
+
+SOURCE_LIST = ["Facebook", "Zalo", "Giới thiệu", "Website", "Gọi trực tiếp", "Khác"]
+
 
 class SheetsService:
     def __init__(self):
         try:
-            creds = service_account.Credentials.from_service_account_file(
-                CREDENTIALS_FILE, scopes=SCOPES
-            )
+            creds = get_credentials(SCOPES)
             self.gc = gspread.authorize(creds)
             self.spreadsheet = self.gc.open_by_key(SPREADSHEET_ID)
             self._ensure_sheet()
@@ -52,34 +73,44 @@ class SheetsService:
         """Tạo sheet nếu chưa có, thêm header"""
         try:
             self.sheet = self.spreadsheet.worksheet(SHEET_NAME)
+            # Nếu sheet trống thì thêm header
+            if not self.sheet.row_values(1):
+                self._setup_headers()
         except gspread.WorksheetNotFound:
-            self.sheet = self.spreadsheet.add_worksheet(SHEET_NAME, rows=1000, cols=10)
-            self.sheet.append_row(HEADERS)
-            # Format header
-            self.sheet.format("A1:J1", {
-                "backgroundColor": {"red": 0.2, "green": 0.5, "blue": 0.9},
-                "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
-            })
+            self.sheet = self.spreadsheet.add_worksheet(SHEET_NAME, rows=1000, cols=13)
+            self._setup_headers()
+
+    def _setup_headers(self):
+        self.sheet.append_row(HEADERS)
+        self.sheet.format("A1:M1", {
+            "backgroundColor": {"red": 0.13, "green": 0.37, "blue": 0.87},
+            "textFormat": {
+                "bold": True,
+                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                "fontSize": 11,
+            },
+            "horizontalAlignment": "CENTER",
+        })
+        # Freeze header row
+        self.sheet.freeze(rows=1)
 
     def _get_all_customers(self) -> list[dict]:
         if not self.sheet:
             return []
         try:
-            records = self.sheet.get_all_records()
-            return records
+            return self.sheet.get_all_records()
         except:
             return []
 
     def _get_next_stt(self) -> int:
         records = self._get_all_customers()
-        if not records:
-            return 1
         return len(records) + 1
 
     async def add_customer(self, name: str, status: str = "Mới",
                            phone: str = "", email: str = "",
                            need: str = "", note: str = "",
-                           contact_person: str = "") -> str:
+                           contact_person: str = "", nav: str = "",
+                           source: str = "", next_meeting: str = "") -> str:
         if not self.sheet:
             return "❌ Chưa cấu hình Google Sheets"
         try:
@@ -87,12 +118,24 @@ class SheetsService:
             stt = self._get_next_stt()
 
             row = [
-                stt, name, contact_person, phone,
-                email, need, status, note, now, now
+                stt,            # A - STT
+                name,           # B - Tên KH
+                contact_person, # C - Người liên hệ
+                phone,          # D - SĐT
+                email,          # E - Email
+                need,           # F - Nhu cầu
+                nav,            # G - Tiềm năng (NAV)
+                source,         # H - Nguồn KH
+                status,         # I - Trạng thái
+                next_meeting,   # J - Ngày hẹn tiếp
+                note,           # K - Ghi chú
+                now,            # L - Ngày thêm
+                now,            # M - Cập nhật lần cuối
             ]
             self.sheet.append_row(row)
 
-            emoji = STATUS_EMOJI.get(status, "📋")
+            status_emoji = STATUS_EMOJI.get(status, "📋")
+            nav_emoji = NAV_EMOJI.get(nav, "")
             return (
                 f"✅ *Đã thêm khách hàng!*\n\n"
                 f"👤 *{name}*\n"
@@ -100,13 +143,17 @@ class SheetsService:
                 f"📞 SĐT: {phone or 'Chưa có'}\n"
                 f"📧 Email: {email or 'Chưa có'}\n"
                 f"💼 Nhu cầu: {need or 'Chưa rõ'}\n"
-                f"{emoji} Trạng thái: *{status}*\n"
+                f"{nav_emoji} Tiềm năng: *{nav or 'Chưa đánh giá'}*\n"
+                f"📣 Nguồn KH: {source or 'Chưa có'}\n"
+                f"{status_emoji} Trạng thái: *{status}*\n"
+                f"📅 Hẹn tiếp: {next_meeting or 'Chưa có'}\n"
                 f"📝 Ghi chú: {note or 'Không có'}"
             )
         except Exception as e:
             return f"❌ Lỗi thêm KH: {str(e)}"
 
-    async def get_customers(self, status: str = None, search: str = None) -> str:
+    async def get_customers(self, status: str = None, search: str = None,
+                            nav: str = None, source: str = None) -> str:
         if not self.sheet:
             return "❌ Chưa cấu hình Google Sheets"
         try:
@@ -114,19 +161,21 @@ class SheetsService:
             if not records:
                 return "👥 *Chưa có khách hàng nào*\n\nNhắn để thêm KH mới: _\"Thêm KH: Tên, SĐT, nhu cầu\"_"
 
-            # Lọc theo status
+            # Lọc
             if status:
                 records = [r for r in records if r.get("Trạng thái", "").lower() == status.lower()]
-
-            # Tìm kiếm theo tên
+            if nav:
+                records = [r for r in records if r.get("Tiềm năng (NAV)", "").lower() == nav.lower()]
+            if source:
+                records = [r for r in records if r.get("Nguồn KH", "").lower() == source.lower()]
             if search:
-                search_lower = search.lower()
+                s = search.lower()
                 records = [r for r in records if
-                           search_lower in str(r.get("Tên KH / Công ty", "")).lower() or
-                           search_lower in str(r.get("Người liên hệ", "")).lower()]
+                           s in str(r.get("Tên KH / Công ty", "")).lower() or
+                           s in str(r.get("Người liên hệ", "")).lower()]
 
             if not records:
-                return f"🔍 Không tìm thấy khách hàng phù hợp"
+                return "🔍 Không tìm thấy khách hàng phù hợp"
 
             # Nhóm theo trạng thái
             grouped = {}
@@ -144,28 +193,34 @@ class SheetsService:
                 for r in grouped[st]:
                     name = r.get("Tên KH / Công ty", "?")
                     phone = r.get("SĐT", "")
-                    need = r.get("Nhu cầu", "")
+                    nav_val = r.get("Tiềm năng (NAV)", "")
+                    source_val = r.get("Nguồn KH", "")
+                    next_m = r.get("Ngày hẹn tiếp theo", "")
+
+                    nav_str = f" {NAV_EMOJI.get(nav_val, '')} {nav_val}" if nav_val else ""
                     phone_str = f" | 📞 {phone}" if phone else ""
-                    need_str = f"\n    💼 {need}" if need else ""
-                    lines.append(f"  • *{name}*{phone_str}{need_str}")
+                    source_str = f" | 📣 {source_val}" if source_val else ""
+                    next_str = f"\n    📅 Hẹn tiếp: {next_m}" if next_m else ""
+
+                    lines.append(f"  • *{name}*{nav_str}{phone_str}{source_str}{next_str}")
 
             return "\n".join(lines)
 
         except Exception as e:
             return f"❌ Lỗi lấy danh sách KH: {str(e)}"
 
-    async def update_customer(self, name: str, status: str = None, note: str = None) -> str:
+    async def update_customer(self, name: str, status: str = None, note: str = None,
+                               nav: str = None, next_meeting: str = None) -> str:
         if not self.sheet:
             return "❌ Chưa cấu hình Google Sheets"
         try:
             records = self.sheet.get_all_records()
             name_lower = name.lower()
 
-            # Tìm dòng cần cập nhật
             row_idx = None
             for i, r in enumerate(records):
                 if name_lower in str(r.get("Tên KH / Công ty", "")).lower():
-                    row_idx = i + 2  # +2 vì header ở row 1, records bắt đầu từ row 2
+                    row_idx = i + 2
                     break
 
             if row_idx is None:
@@ -175,16 +230,21 @@ class SheetsService:
             updates = []
 
             if status:
-                self.sheet.update_cell(row_idx, 7, status)  # Cột G - Trạng thái
+                self.sheet.update_cell(row_idx, COL["status"], status)
                 updates.append(f"Trạng thái → *{status}*")
-
+            if nav:
+                self.sheet.update_cell(row_idx, COL["nav"], nav)
+                updates.append(f"Tiềm năng → *{nav}*")
+            if next_meeting:
+                self.sheet.update_cell(row_idx, COL["next_meeting"], next_meeting)
+                updates.append(f"Hẹn tiếp → *{next_meeting}*")
             if note:
                 old_note = records[row_idx - 2].get("Ghi chú", "")
                 new_note = f"{old_note}\n[{now}] {note}".strip()
-                self.sheet.update_cell(row_idx, 8, new_note)  # Cột H - Ghi chú
-                updates.append(f"Ghi chú mới: _{note}_")
+                self.sheet.update_cell(row_idx, COL["note"], new_note)
+                updates.append(f"Ghi chú: _{note}_")
 
-            self.sheet.update_cell(row_idx, 10, now)  # Cột J - Cập nhật lần cuối
+            self.sheet.update_cell(row_idx, COL["updated"], now)
 
             found_name = records[row_idx - 2].get("Tên KH / Công ty", name)
             emoji = STATUS_EMOJI.get(status, "✏️") if status else "✏️"
@@ -205,21 +265,42 @@ class SheetsService:
             if total == 0:
                 return "📊 *Báo cáo KH:* Chưa có dữ liệu"
 
-            # Thống kê theo trạng thái
+            # Thống kê trạng thái
             stats = {}
+            nav_stats = {}
+            source_stats = {}
+
             for r in records:
                 st = r.get("Trạng thái", "Khác")
                 stats[st] = stats.get(st, 0) + 1
+                nav = r.get("Tiềm năng (NAV)", "Chưa đánh giá")
+                nav_stats[nav] = nav_stats.get(nav, 0) + 1
+                src = r.get("Nguồn KH", "Khác")
+                source_stats[src] = source_stats.get(src, 0) + 1
 
             lines = [f"📊 *Báo cáo khách hàng:*\n"]
             lines.append(f"👥 Tổng số KH: *{total}*\n")
 
+            # Theo trạng thái
+            lines.append("*Theo trạng thái:*")
             for st in STATUS_LIST:
                 count = stats.get(st, 0)
                 emoji = STATUS_EMOJI.get(st, "📋")
                 pct = round(count / total * 100) if total > 0 else 0
                 bar = "▓" * (pct // 10) + "░" * (10 - pct // 10)
                 lines.append(f"{emoji} {st}: *{count}* ({pct}%)\n  {bar}")
+
+            # Theo tiềm năng
+            lines.append("\n*Theo tiềm năng (NAV):*")
+            for nav in NAV_LIST:
+                count = nav_stats.get(nav, 0)
+                emoji = NAV_EMOJI.get(nav, "")
+                lines.append(f"{emoji} {nav}: *{count}* KH")
+
+            # Theo nguồn
+            lines.append("\n*Theo nguồn KH:*")
+            for src, count in sorted(source_stats.items(), key=lambda x: -x[1]):
+                lines.append(f"📣 {src}: *{count}* KH")
 
             # Tỉ lệ chuyển đổi
             chot = stats.get("Đã chốt", 0)

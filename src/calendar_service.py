@@ -6,20 +6,17 @@
 
 import os
 from datetime import datetime, timedelta
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from credentials_helper import get_credentials
 
 CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
-CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
 class CalendarService:
     def __init__(self):
         try:
-            creds = service_account.Credentials.from_service_account_file(
-                CREDENTIALS_FILE, scopes=SCOPES
-            )
+            creds = get_credentials(SCOPES)
             self.service = build("calendar", "v3", credentials=creds)
         except Exception as e:
             print(f"⚠️ Không thể kết nối Google Calendar: {e}")
