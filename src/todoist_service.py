@@ -63,26 +63,29 @@ class TodoistService:
 
     # ─── 1. XEM TASK HÔM NAY ─────────────────────────────────────
     async def get_tasks_today(self) -> str:
-        data = self._get("tasks", {"filter": "today | overdue"})
+        # Lấy tất cả task rồi lọc thủ công theo ngày hôm nay
+        data = self._get("tasks")
 
-        # v1 trả về dict có key 'results' hoặc list
         if data is None:
             return "❌ Không thể kết nối Todoist. Kiểm tra lại API Token."
 
-        tasks = data.get("results", data) if isinstance(data, dict) else data
-        if not tasks:
-            return "✅ *Không có task nào hôm nay!* 🎉"
-
+        all_tasks = data.get("results", data) if isinstance(data, dict) else data
         today_str = datetime.now().strftime("%Y-%m-%d")
         overdue, today_tasks = [], []
 
-        for t in tasks:
+        for t in all_tasks:
             due = t.get("due") or {}
             due_date = due.get("date", "")
-            if due_date and due_date < today_str:
+            if not due_date:
+                continue  # Bỏ qua task không có hạn
+            if due_date < today_str:
                 overdue.append(t)
-            else:
+            elif due_date == today_str:
                 today_tasks.append(t)
+            # due_date > today_str: task tương lai, bỏ qua
+
+        if not overdue and not today_tasks:
+            return "✅ *Không có task nào hôm nay!* 🎉"
 
         lines = [f"📋 *Task hôm nay ({len(tasks)} task):*\n"]
 
@@ -110,11 +113,22 @@ class TodoistService:
 
     # ─── 2. XEM TASK TUẦN NÀY ────────────────────────────────────
     async def get_tasks_week(self) -> str:
-        data = self._get("tasks", {"filter": "7 days"})
+        from datetime import timedelta
+        data = self._get("tasks")
         if data is None:
             return "❌ Không thể kết nối Todoist"
 
-        tasks = data.get("results", data) if isinstance(data, dict) else data
+        all_tasks = data.get("results", data) if isinstance(data, dict) else data
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        end_str = (datetime.now() + timedelta(days=6)).strftime("%Y-%m-%d")
+
+        # Lọc task trong tuần (hôm nay đến 6 ngày tới) + quá hạn
+        tasks = []
+        for t in all_tasks:
+            due = t.get("due") or {}
+            due_date = due.get("date", "")
+            if due_date and due_date <= end_str:
+                tasks.append(t)
         if not tasks:
             return "✅ *Không có task nào trong tuần!*"
 
