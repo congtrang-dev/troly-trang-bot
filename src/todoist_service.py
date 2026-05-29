@@ -10,7 +10,7 @@ import requests
 from datetime import datetime
 
 TODOIST_TOKEN = os.getenv("TODOIST_API_TOKEN")
-BASE_URL = "https://api.todoist.com/rest/v2"
+BASE_URL = "https://api.todoist.com/rest/v2"  # v2 is correct
 
 PRIORITY_MAP = {
     "p1": "🔴 Khẩn cấp", "p2": "🟠 Cao", "p3": "🟡 Trung bình", "p4": "🟢 Thường"
@@ -48,7 +48,7 @@ class TodoistService:
     def _close(self, task_id: str) -> bool:
         try:
             r = requests.post(f"{BASE_URL}/tasks/{task_id}/close", headers=self.headers, timeout=10)
-            return r.status_code == 204
+            return r.status_code in [200, 204]
         except:
             return False
 
@@ -126,7 +126,8 @@ class TodoistService:
     async def add_task(self, content: str, description: str = "",
                        due: str = "", priority: str = "p4",
                        project_name: str = "", labels: list = None) -> str:
-        data = {"content": content, "priority": int(priority[1])}
+        priority_num = int(priority[1]) if priority and len(priority) > 1 else 4
+        data = {"content": content, "priority": priority_num}
         if description:
             data["description"] = description
         if due:
@@ -257,29 +258,34 @@ class TodoistService:
 
     # ─── 6. BÁO CÁO NĂNG SUẤT ───────────────────────────────────
     async def get_productivity_report(self) -> str:
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        # Task hoàn thành hôm nay
-        completed = self._get("tasks", {"filter": "completed today"})
-        # Task đang mở
+        # Task còn lại hôm nay + quá hạn
         open_tasks = self._get("tasks", {"filter": "today | overdue"})
+        all_tasks = self._get("tasks")
 
-        completed_count = len(completed) if completed else 0
         open_count = len(open_tasks) if open_tasks else 0
+        total = len(all_tasks) if all_tasks else 0
 
-        lines = [f"📊 *Báo cáo năng suất hôm nay:*\n"]
-        lines.append(f"✅ Đã hoàn thành: *{completed_count} task*")
-        lines.append(f"📋 Còn lại: *{open_count} task*")
-
-        if completed_count + open_count > 0:
-            pct = round(completed_count / (completed_count + open_count) * 100)
-            bar = "▓" * (pct // 10) + "░" * (10 - pct // 10)
-            lines.append(f"📈 Tiến độ: *{pct}%*\n  {bar}")
+        lines = ["📊 *Báo cáo năng suất hôm nay:*\n"]
+        lines.append(f"📋 Task cần làm hôm nay: *{open_count} task*")
+        lines.append(f"📁 Tổng task đang mở: *{total} task*")
 
         if open_tasks:
+            # Phân loại theo priority
+            urgent = [t for t in open_tasks if t.get("priority") == 1]
+            high   = [t for t in open_tasks if t.get("priority") == 2]
+
+            if urgent:
+                lines.append(f"\n🔴 *Khẩn cấp ({len(urgent)}):*")
+                for t in urgent[:3]:
+                    lines.append(f"  • {t['content']}")
+            if high:
+                lines.append(f"\n🟠 *Ưu tiên cao ({len(high)}):*")
+                for t in high[:3]:
+                    lines.append(f"  • {t['content']}")
+
             lines.append(f"\n⚡ *Cần làm ngay:*")
-            for t in open_tasks[:3]:
-                p = PRIORITY_EMOJI.get(f"p{t.get('priority', 4)}", "🟢")
+            for t in open_tasks[:5]:
+                p = PRIORITY_EMOJI.get(f"p{5 - t.get('priority', 4)}", "🟢")
                 lines.append(f"  • {p} {t['content']}")
 
         return "\n".join(lines)
