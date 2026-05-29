@@ -287,8 +287,13 @@ class AIAgent:
         if user_id not in self.conversation_history:
             self.conversation_history[user_id] = []
 
-        history = self.conversation_history[user_id][-10:]
-        messages = history + [{"role": "user", "content": user_message}]
+        # Chỉ lấy các tin nhắn text thuần (không có tool messages)
+        clean_history = []
+        for msg in self.conversation_history[user_id][-6:]:
+            if isinstance(msg.get("content"), str):
+                clean_history.append(msg)
+
+        messages = clean_history + [{"role": "user", "content": user_message}]
 
         max_iterations = 5
         for _ in range(max_iterations):
@@ -321,7 +326,9 @@ class AIAgent:
                     if hasattr(block, "text"):
                         final_text += block.text
 
-                self.conversation_history[user_id] = messages + [
+                # Chỉ lưu text thuần vào history
+                self.conversation_history[user_id] = clean_history + [
+                    {"role": "user", "content": user_message},
                     {"role": "assistant", "content": final_text}
                 ]
                 return final_text or "✅ Đã thực hiện xong!"
