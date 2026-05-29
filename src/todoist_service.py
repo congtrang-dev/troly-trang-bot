@@ -160,6 +160,7 @@ class TodoistService:
             data["description"] = description
         if due:
             data["due_string"] = due
+            data["due_lang"] = "vi"
         if labels:
             data["labels"] = labels
 
