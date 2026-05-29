@@ -30,19 +30,21 @@ class TodoistService:
     def _get(self, endpoint: str, params: dict = None) -> list | dict | None:
         try:
             r = requests.get(f"{BASE_URL}/{endpoint}", headers=self.headers, params=params, timeout=10)
+            print(f"Todoist GET {endpoint}: status={r.status_code}")
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            print(f"Todoist GET error: {e}")
+            print(f"Todoist GET error [{endpoint}]: {e}")
             return None
 
     def _post(self, endpoint: str, data: dict) -> dict | None:
         try:
             r = requests.post(f"{BASE_URL}/{endpoint}", headers=self.headers, json=data, timeout=10)
+            print(f"Todoist POST {endpoint}: status={r.status_code}, body={r.text[:200]}")
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            print(f"Todoist POST error: {e}")
+            print(f"Todoist POST error [{endpoint}]: {e}")
             return None
 
     def _close(self, task_id: str) -> bool:
