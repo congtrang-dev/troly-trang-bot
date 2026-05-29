@@ -10,6 +10,7 @@ import anthropic
 from datetime import datetime, timedelta
 from calendar_service import CalendarService
 from sheets_service import SheetsService
+from todoist_service import TodoistService
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -141,7 +142,78 @@ TOOLS = [
             },
             "required": ["period"]
         }
-    }
+    }    ,
+    # ─── TODOIST TOOLS ───────────────────────────────────────────
+    {
+        "name": "todoist_get_tasks_today",
+        "description": "Xem danh sách task hôm nay và task quá hạn trong Todoist",
+        "input_schema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "todoist_get_tasks_week",
+        "description": "Xem danh sách task trong tuần này trong Todoist",
+        "input_schema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "todoist_add_task",
+        "description": "Tạo task mới trong Todoist",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content":      {"type": "string", "description": "Tên task"},
+                "description":  {"type": "string", "description": "Mô tả chi tiết task"},
+                "due":          {"type": "string", "description": "Hạn chót (vd: hôm nay, ngày mai, thứ 6)"},
+                "priority":     {"type": "string", "description": "Độ ưu tiên: p1 (khẩn) | p2 (cao) | p3 (trung bình) | p4 (thường)"},
+                "project_name": {"type": "string", "description": "Tên project trong Todoist"},
+                "labels":       {"type": "array", "items": {"type": "string"}, "description": "Nhãn gắn vào task"},
+            },
+            "required": ["content"]
+        }
+    },
+    {
+        "name": "todoist_complete_task",
+        "description": "Đánh dấu hoàn thành một task trong Todoist",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Từ khóa tên task cần hoàn thành"},
+            },
+            "required": ["keyword"]
+        }
+    },
+    {
+        "name": "todoist_add_comment",
+        "description": "Thêm ghi chú/comment vào một task trong Todoist",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_keyword": {"type": "string", "description": "Từ khóa tên task cần ghi chú"},
+                "comment":      {"type": "string", "description": "Nội dung ghi chú"},
+            },
+            "required": ["task_keyword", "comment"]
+        }
+    },
+    {
+        "name": "todoist_get_comments",
+        "description": "Xem tất cả ghi chú của một task trong Todoist",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_keyword": {"type": "string", "description": "Từ khóa tên task cần xem ghi chú"},
+            },
+            "required": ["task_keyword"]
+        }
+    },
+    {
+        "name": "todoist_productivity_report",
+        "description": "Xem báo cáo năng suất: task đã hoàn thành và còn lại hôm nay",
+        "input_schema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "todoist_get_projects",
+        "description": "Xem danh sách tất cả project trong Todoist",
+        "input_schema": {"type": "object", "properties": {}}
+    },
 ]
 
 # ─── System Prompt ────────────────────────────────────────────────
@@ -177,6 +249,7 @@ class AIAgent:
         self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         self.calendar = CalendarService()
         self.sheets = SheetsService()
+        self.todoist = TodoistService()
         self.conversation_history = {}
         # Lưu pending action chờ confirm
         self.pending_actions = {}
@@ -247,6 +320,41 @@ class AIAgent:
                 cal_result = await self.calendar.get_report(tool_input["period"])
                 kh_result = await self.sheets.get_report()
                 return f"{cal_result}\n\n{kh_result}"
+
+            elif tool_name == "todoist_get_tasks_today":
+                return await self.todoist.get_tasks_today()
+
+            elif tool_name == "todoist_get_tasks_week":
+                return await self.todoist.get_tasks_week()
+
+            elif tool_name == "todoist_add_task":
+                return await self.todoist.add_task(
+                    content=tool_input["content"],
+                    description=tool_input.get("description", ""),
+                    due=tool_input.get("due", ""),
+                    priority=tool_input.get("priority", "p4"),
+                    project_name=tool_input.get("project_name", ""),
+                    labels=tool_input.get("labels", []),
+                )
+
+            elif tool_name == "todoist_complete_task":
+                return await self.todoist.complete_task(tool_input["keyword"])
+
+            elif tool_name == "todoist_add_comment":
+                return await self.todoist.add_comment(
+                    task_keyword=tool_input["task_keyword"],
+                    comment=tool_input["comment"],
+                )
+
+            elif tool_name == "todoist_get_comments":
+                return await self.todoist.get_comments(tool_input["task_keyword"])
+
+            elif tool_name == "todoist_productivity_report":
+                return await self.todoist.get_productivity_report()
+
+            elif tool_name == "todoist_get_projects":
+                return await self.todoist.get_projects()
+
 
             else:
                 return f"❌ Tool '{tool_name}' không tồn tại"
