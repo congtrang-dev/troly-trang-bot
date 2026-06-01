@@ -173,8 +173,19 @@ class TodoistService:
         if description:
             data["description"] = description
         if due:
-            data["due_string"] = due
-            data["due_lang"] = "vi"
+            # Chuyển tiếng Việt thành English cho Todoist hiểu
+            due_map = {
+                "hôm nay": "today", "ngày mai": "tomorrow",
+                "tuần sau": "next week", "thứ 2": "monday",
+                "thứ 3": "tuesday", "thứ 4": "wednesday",
+                "thứ 5": "thursday", "thứ 6": "friday",
+                "thứ 7": "saturday", "chủ nhật": "sunday",
+                "cuối tuần": "saturday",
+            }
+            due_en = due.lower()
+            for vi, en in due_map.items():
+                due_en = due_en.replace(vi, en)
+            data["due_string"] = due_en
         if labels:
             data["labels"] = labels
 
