@@ -220,7 +220,10 @@ TOOLS = [
 SYSTEM_PROMPT = """Bạn là trợ lý AI thông minh giúp quản lý công việc và khách hàng qua Telegram.
 
 NGÀY GIỜ HIỆN TẠI: {current_datetime}
-HÔM NAY: {today} | NGÀY MAI: {tomorrow}
+HÔM NAY: {today} ({today_weekday}) | NGÀY MAI: {tomorrow} ({tomorrow_weekday})
+
+LỊCH TUẦN NÀY:
+{week_calendar}
 
 NHIỆM VỤ:
 - Hiểu yêu cầu bằng tiếng Việt tự nhiên
@@ -257,10 +260,25 @@ class AIAgent:
     def _get_system_prompt(self):
         now = datetime.now()
         tomorrow = now + timedelta(days=1)
+        weekdays = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
+
+        # Tạo lịch cả tuần để Claude biết chính xác ngày nào là thứ mấy
+        week_lines = []
+        for i in range(7):
+            day = now + timedelta(days=i)
+            label = "← HÔM NAY" if i == 0 else ("← NGÀY MAI" if i == 1 else "")
+            week_lines.append(
+                f"  {weekdays[day.weekday()]}: {day.strftime('%Y-%m-%d')} {label}"
+            )
+        week_calendar = "\n".join(week_lines)
+
         return SYSTEM_PROMPT.format(
             current_datetime=now.strftime("%d/%m/%Y %H:%M"),
             today=now.strftime("%Y-%m-%d"),
+            today_weekday=weekdays[now.weekday()],
             tomorrow=tomorrow.strftime("%Y-%m-%d"),
+            tomorrow_weekday=weekdays[tomorrow.weekday()],
+            week_calendar=week_calendar,
         )
 
     async def _execute_tool(self, tool_name: str, tool_input: dict, user_id: str = "default") -> str:
@@ -395,19 +413,15 @@ class AIAgent:
         if user_id not in self.conversation_history:
             self.conversation_history[user_id] = []
 
-        # Chỉ lấy các tin nhắn text thuần (không có tool messages)
+        # Không dùng history để giảm token & tăng tốc độ
         clean_history = []
-        for msg in self.conversation_history[user_id][-6:]:
-            if isinstance(msg.get("content"), str):
-                clean_history.append(msg)
+        messages = [{"role": "user", "content": user_message}]
 
-        messages = clean_history + [{"role": "user", "content": user_message}]
-
-        max_iterations = 5
+        max_iterations = 3
         for _ in range(max_iterations):
             response = self.client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=2000,
+                model="claude-haiku-4-5-20251001",
+                max_tokens=800,
                 system=self._get_system_prompt(),
                 tools=TOOLS,
                 messages=messages,
