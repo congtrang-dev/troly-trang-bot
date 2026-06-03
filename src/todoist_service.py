@@ -6,8 +6,11 @@
 """
 
 import os
+import pytz
 import requests
 from datetime import datetime
+
+VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 
 TODOIST_TOKEN = os.getenv("TODOIST_API_TOKEN")
 BASE_URL = "https://api.todoist.com/api/v1"
@@ -70,7 +73,7 @@ class TodoistService:
             return "❌ Không thể kết nối Todoist. Kiểm tra lại API Token."
 
         all_tasks = data.get("results", data) if isinstance(data, dict) else data
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = datetime.now(VN_TZ).strftime("%Y-%m-%d")
         overdue, today_tasks = [], []
 
         for t in all_tasks:
@@ -119,8 +122,8 @@ class TodoistService:
             return "❌ Không thể kết nối Todoist"
 
         all_tasks = data.get("results", data) if isinstance(data, dict) else data
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        end_str = (datetime.now() + timedelta(days=6)).strftime("%Y-%m-%d")
+        today_str = datetime.now(VN_TZ).strftime("%Y-%m-%d")
+        end_str = (datetime.now(VN_TZ) + timedelta(days=6)).strftime("%Y-%m-%d")
 
         # Lọc task trong tuần (hôm nay đến 6 ngày tới) + quá hạn
         tasks = []
@@ -252,7 +255,7 @@ class TodoistService:
             return f"🔍 Không tìm thấy task *'{task_keyword}'*"
 
         task = matched[0]
-        now = datetime.now().strftime("%d/%m/%Y %H:%M")
+        now = datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M")
         result = self._post("comments", {
             "task_id": task["id"],
             "content": f"[{now}] {comment}"

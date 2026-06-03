@@ -5,9 +5,12 @@
 """
 
 import os
+import pytz
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 from credentials_helper import get_credentials
+
+VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 
 CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
@@ -237,7 +240,9 @@ class CalendarService:
                     dt = datetime.fromisoformat(start)
                     date_str = dt.strftime("%d/%m/%Y")
                     time_str = dt.strftime("%H:%M")
-                    weekday = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][dt.weekday()]
+                    # Chuyển về giờ VN để hiển thị đúng
+                    dt_vn = dt.astimezone(VN_TZ)
+                    weekday = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][dt_vn.weekday()]
                 else:
                     dt = datetime.strptime(start, "%Y-%m-%d")
                     date_str = dt.strftime("%d/%m/%Y")
@@ -259,7 +264,7 @@ class CalendarService:
             return f"❌ Lỗi lấy lịch: {str(e)}"
 
     async def get_report(self, period: str = "week") -> str:
-        today = datetime.now()
+        today = datetime.now(VN_TZ)
         if period == "week":
             start = today.strftime("%Y-%m-%d")
             end = (today + timedelta(days=6)).strftime("%Y-%m-%d")

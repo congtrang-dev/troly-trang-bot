@@ -7,10 +7,13 @@
 
 import os
 import anthropic
+import pytz
 from datetime import datetime, timedelta
 from calendar_service import CalendarService
 from sheets_service import SheetsService
 from todoist_service import TodoistService
+
+VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -258,7 +261,7 @@ class AIAgent:
         self.pending_actions = {}
 
     def _get_system_prompt(self):
-        now = datetime.now()
+        now = datetime.now(VN_TZ)  # Giờ Việt Nam chính xác
         tomorrow = now + timedelta(days=1)
         weekdays = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
 
